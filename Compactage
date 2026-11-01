@@ -1,0 +1,43 @@
+' À lancer UNE fois : crée le formulaire caché F_Fermeture avec son code
+Public Sub CreerFormulaireFermeture()
+    Dim frm As Form, mdl As Module
+    Dim nomTemp As String, code As String
+
+    ' Supprime l'ancien F_Fermeture s'il existe déjà
+    On Error Resume Next
+    DoCmd.Close acForm, "F_Fermeture", acSaveNo
+    DoCmd.DeleteObject acForm, "F_Fermeture"
+    On Error GoTo 0
+
+    ' Nouveau formulaire vide, sans source ni contrôle
+    Set frm = CreateForm()
+    nomTemp = frm.Name
+    frm.Caption = "Fermeture"
+    frm.RecordSelectors = False
+    frm.NavigationButtons = False
+    frm.HasModule = True
+    frm.OnUnload = "[Event Procedure]"
+
+    ' Code de l'événement « Sur libération »
+    code = "' Ouvert caché au démarrage (AutoExec), se ferme avec Access :" & vbCrLf & _
+           "' compacte DB_GMAO_Machine si personne d'autre ne l'utilise." & vbCrLf & _
+           "Private Sub Form_Unload(Cancel As Integer)" & vbCrLf & _
+           "    Dim i As Integer" & vbCrLf & _
+           "    On Error Resume Next" & vbCrLf & _
+           "    For i = Forms.Count - 1 To 0 Step -1" & vbCrLf & _
+           "        If Forms(i).Name <> Me.Name Then DoCmd.Close acForm, Forms(i).Name, acSaveNo" & vbCrLf & _
+           "    Next i" & vbCrLf & _
+           "    For i = Reports.Count - 1 To 0 Step -1" & vbCrLf & _
+           "        DoCmd.Close acReport, Reports(i).Name, acSaveNo" & vbCrLf & _
+           "    Next i" & vbCrLf & _
+           "    SynerlinkCompacter" & vbCrLf & _
+           "End Sub"
+    Set mdl = frm.Module
+    mdl.AddFromString code
+
+    ' Enregistrement sous le nom F_Fermeture
+    DoCmd.Close acForm, nomTemp, acSaveYes
+    DoCmd.Rename "F_Fermeture", acForm, nomTemp
+
+    MsgBox "Formulaire F_Fermeture créé.", vbInformation
+End Sub
