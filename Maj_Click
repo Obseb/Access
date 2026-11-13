@@ -1,0 +1,15 @@
+Private Sub BP_Maj_Click()
+    ' 1. Gestion des machines (formulaire en mode Dialogue : le code attend sa fermeture)
+    gSynerlinkLancer = False
+    DoCmd.OpenForm "F_Synerlink_Machines", WindowMode:=acDialog
+    If Not gSynerlinkLancer Then Exit Sub
+
+    ' 2. Import
+    If Not SynerlinkImport() Then Exit Sub
+    With Me.F_Synerlink_SF.Form
+        .Requery
+        .OrderBy = "ID"
+        .OrderByOn = True
+    End With
+    Call cmdGetData_Click        ' recharge l'arborescence
+End Sub
