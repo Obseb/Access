@@ -126,39 +126,39 @@ Public Sub CreerFormulaireMachines()
     ctl.FontItalic = True
 
     ' Code du formulaire
-    code = "Option Explicit" & vbCrLf & vbCrLf & _
-        "' Contrôle avant enregistrement d'une ligne" & vbCrLf & _
-        "Private Sub Form_BeforeUpdate(Cancel As Integer)" & vbCrLf & _
-        "    If IsNull(Me.Ordre) Or IsNull(Me.Niveau) Or Len(Nz(Me.Reference, """")) = 0 Then" & vbCrLf & _
-        "        MsgBox ""Renseignez l'ordre, le type et la référence."", vbExclamation, ""Synerlink""" & vbCrLf & _
-        "        Cancel = True" & vbCrLf & _
-        "    End If" & vbCrLf & _
-        "End Sub" & vbCrLf & vbCrLf & _
-        "' Enregistre la ligne en cours ; renvoie Faux si l'enregistrement est refusé" & vbCrLf & _
-        "Private Function Enregistrer() As Boolean" & vbCrLf & _
-        "    On Error Resume Next" & vbCrLf & _
-        "    If Me.Dirty Then Me.Dirty = False" & vbCrLf & _
-        "    Enregistrer = Not Me.Dirty" & vbCrLf & _
-        "End Function" & vbCrLf & vbCrLf & _
-        "Private Sub BP_Lancer_Click()" & vbCrLf & _
-        "    Dim premier As Variant" & vbCrLf & _
-        "    If Not Enregistrer() Then Exit Sub" & vbCrLf & _
-        "    ' La première ligne active doit être une ligne de production (niveau 1)" & vbCrLf & _
-        "    premier = DMin(""Ordre"", ""T_Synerlink_Machines"", ""Actif"")" & vbCrLf & _
-        "    If IsNull(premier) Then" & vbCrLf & _
-        "        MsgBox ""Aucune ligne active."", vbExclamation, ""Synerlink"": Exit Sub" & vbCrLf & _
-        "    End If" & vbCrLf & _
-        "    If DLookup(""Niveau"", ""T_Synerlink_Machines"", ""Ordre="" & premier) <> 1 Then" & vbCrLf & _
-        "        MsgBox ""La première ligne active doit être une ligne de production (type Ligne)."", vbExclamation, ""Synerlink"": Exit Sub" & vbCrLf & _
-        "    End If" & vbCrLf & _
-        "    gSynerlinkLancer = True" & vbCrLf & _
-        "    DoCmd.Close acForm, Me.Name" & vbCrLf & _
-        "End Sub" & vbCrLf & vbCrLf & _
-        "Private Sub BP_Fermer_Click()" & vbCrLf & _
-        "    If Not Enregistrer() Then Exit Sub" & vbCrLf & _
-        "    gSynerlinkLancer = False" & vbCrLf & _
-        "    DoCmd.Close acForm, Me.Name" & vbCrLf & _
-        "End Sub"
+    code = ""
+    code = code & "' Contrôle avant enregistrement d'une ligne" & vbCrLf
+    code = code & "Private Sub Form_BeforeUpdate(Cancel As Integer)" & vbCrLf
+    code = code & "    If IsNull(Me.Ordre) Or IsNull(Me.Niveau) Or Len(Nz(Me.Reference, """")) = 0 Then" & vbCrLf
+    code = code & "        MsgBox ""Renseignez l'ordre, le type et la référence."", vbExclamation, ""Synerlink""" & vbCrLf
+    code = code & "        Cancel = True" & vbCrLf
+    code = code & "    End If" & vbCrLf
+    code = code & "End Sub" & vbCrLf & vbCrLf
+    code = code & "' Enregistre la ligne en cours ; renvoie Faux si l'enregistrement est refusé" & vbCrLf
+    code = code & "Private Function Enregistrer() As Boolean" & vbCrLf
+    code = code & "    On Error Resume Next" & vbCrLf
+    code = code & "    If Me.Dirty Then Me.Dirty = False" & vbCrLf
+    code = code & "    Enregistrer = Not Me.Dirty" & vbCrLf
+    code = code & "End Function" & vbCrLf & vbCrLf
+    code = code & "Private Sub BP_Lancer_Click()" & vbCrLf
+    code = code & "    Dim premier As Variant" & vbCrLf
+    code = code & "    If Not Enregistrer() Then Exit Sub" & vbCrLf
+    code = code & "    ' La première ligne active doit être une ligne de production (niveau 1)" & vbCrLf
+    code = code & "    premier = DMin(""Ordre"", ""T_Synerlink_Machines"", ""Actif"")" & vbCrLf
+    code = code & "    If IsNull(premier) Then" & vbCrLf
+    code = code & "        MsgBox ""Aucune ligne active."", vbExclamation, ""Synerlink"": Exit Sub" & vbCrLf
+    code = code & "    End If" & vbCrLf
+    code = code & "    If DLookup(""Niveau"", ""T_Synerlink_Machines"", ""Ordre="" & premier) <> 1 Then" & vbCrLf
+    code = code & "        MsgBox ""La première ligne active doit être une ligne de production (type Ligne)."", vbExclamation, ""Synerlink"": Exit Sub" & vbCrLf
+    code = code & "    End If" & vbCrLf
+    code = code & "    gSynerlinkLancer = True" & vbCrLf
+    code = code & "    DoCmd.Close acForm, Me.Name" & vbCrLf
+    code = code & "End Sub" & vbCrLf & vbCrLf
+    code = code & "Private Sub BP_Fermer_Click()" & vbCrLf
+    code = code & "    If Not Enregistrer() Then Exit Sub" & vbCrLf
+    code = code & "    gSynerlinkLancer = False" & vbCrLf
+    code = code & "    DoCmd.Close acForm, Me.Name" & vbCrLf
+    code = code & "End Sub"
     frm.HasModule = True
     Set mdl = frm.Module
     mdl.AddFromString code
