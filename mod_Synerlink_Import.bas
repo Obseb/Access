@@ -4,12 +4,13 @@ Option Explicit
 
 '===============================================================================
 ' Réactualisation de T_Synerlink_Arbo à partir des fichiers <machine>.xlsx
-' (ex. C:\GMAO\Hierarchie Synerlink Access\6155DO1.xlsx)
+' Dossier : <Adresse de Rep_Cde dans T_Commande_Liens>\Plans_Synerlink\_Liste_Machines\
 '
 ' Points d'entrée :
 '   SynerlinkImport()            -> lit les Excel et remplace T_Synerlink_Arbo
 '   SynerlinkCompacter()         -> compacte la base qui contient les tables
 '                                   (si personne d'autre ne l'utilise)
+'   CreerFormulaireFermeture     -> à lancer une fois : crée F_Fermeture
 '
 ' Les tables T_Synerlink_* peuvent être locales ou liées (base séparée, ex.
 ' DB_GMAO_Machine.accdb) : le module écrit directement dans la base qui les
@@ -30,7 +31,7 @@ Option Explicit
 '   ID = 1, 2, 3... dans l'ordre de l'arborescence (champ Entier long)
 '===============================================================================
 
-Private Const DOSSIER_BOM As String = "C:\GMAO\Hierarchie Synerlink Access\"
+Private Const SOUS_DOSSIER_BOM As String = "Plans_Synerlink\_Liste_Machines\"
 Private Const SUFFIXE_FICHIER As String = ".xlsx"
 Private Const TABLE_ARBO As String = "T_Synerlink_Arbo"
 Private Const TABLE_SAUV As String = "T_Synerlink_Arbo_Sauv"
@@ -50,6 +51,7 @@ End Type
 Private mLignes() As tLigne
 Private mNb As Long
 Private mAvertissements As String
+Private mDossier As String          ' dossier des fichiers Excel, lu une fois par import
 
 '===============================================================================
 ' IMPORT
@@ -63,6 +65,15 @@ Public Function SynerlinkImport() As Boolean
     mAvertissements = ""
     ReDim mLignes(1 To 100000)
 
+    ' 0. Dossier des fichiers Excel (lu dans T_Commande_Liens)
+    mDossier = DossierBOM()
+    If Len(mDossier) = 0 Then
+        MsgBox "Import annulé : dossier des fichiers Synerlink introuvable." & vbCrLf & _
+               "Vérifiez l'adresse « Rep_Cde » dans T_Commande_Liens (sous-dossier " & SOUS_DOSSIER_BOM & ").", _
+               vbExclamation, "Synerlink"
+        Exit Function
+    End If
+
     ' 1. Table de paramètres (créée au premier lancement si elle n'existe pas)
     If Not TableExiste(TABLE_PARAM) Then CreerTableParametres
 
@@ -70,7 +81,7 @@ Public Function SynerlinkImport() As Boolean
     Dim manquants As String, nouveaux As String
     ControlerFichiers manquants, nouveaux
     If Len(manquants) > 0 Then
-        MsgBox "Import annulé : fichiers introuvables dans" & vbCrLf & DOSSIER_BOM & vbCrLf & vbCrLf & _
+        MsgBox "Import annulé : fichiers introuvables dans" & vbCrLf & mDossier & vbCrLf & vbCrLf & _
                manquants & vbCrLf & _
                "Ajoutez ces fichiers, ou décochez « Actif » pour ces machines dans " & TABLE_PARAM & ".", _
                vbExclamation, "Synerlink"
@@ -137,7 +148,7 @@ Private Sub LireTousLesFichiers()
         Else
             nMachine = nMachine + 1
             Ajouter 2, nLigne & "." & nMachine, 0, rs!Reference, Null, rs!Libelle, Null
-            fichier = DOSSIER_BOM & rs!Reference & SUFFIXE_FICHIER
+            fichier = mDossier & rs!Reference & SUFFIXE_FICHIER
             SysCmd acSysCmdSetStatus, "Lecture " & rs!Reference & " (" & iFich & "/" & nbFich & ")..."
             Set wb = xl.Workbooks.Open(fichier, 0, True)    ' UpdateLinks:=0, ReadOnly:=True
             iOnglet = 0
@@ -317,7 +328,14 @@ Private Sub EcrireTable()
         dbT.Execute "INSERT INTO " & TABLE_SAUV & " SELECT * FROM " & TABLE_ARBO, dbFailOnError
     Else
         dbT.Execute "SELECT * INTO " & TABLE_SAUV & " FROM " & TABLE_ARBO, dbFailOnError
-        If Len(chemin) > 0 And Not TableExiste(TABLE_SAUV) Then
+    End If
+    If Len(chemin) > 0 Then
+        ' Une copie locale de la sauvegarde dans le frontal (ancienne version du module) est
+        ' supprimée et remplacée par une liaison vers la table de la base de données
+        If TableExiste(TABLE_SAUV) Then
+            If Len(CurrentDb.TableDefs(TABLE_SAUV).Connect) = 0 Then DoCmd.DeleteObject acTable, TABLE_SAUV
+        End If
+        If Not TableExiste(TABLE_SAUV) Then
             DoCmd.TransferDatabase acLink, "Microsoft Access", chemin, acTable, TABLE_SAUV, TABLE_SAUV
         End If
     End If
@@ -373,6 +391,7 @@ End Sub
 '===============================================================================
 ' COMPACTAGE de la base qui contient les tables Synerlink
 '===============================================================================
+' La version précédente n'est conservée (..._avant_compactage.accdb) qu'en cas d'échec.
 ' Renvoie Vrai si la base a été compactée, Faux si elle est utilisée par
 ' quelqu'un (on réessaiera plus tard) ou si la table est locale.
 ' ATTENTION : les formulaires ouverts sur ces tables doivent être libérés avant.
@@ -403,8 +422,9 @@ Public Function CompacterBase(ByVal chemin As String) As Boolean
     If Len(Dir(tmp)) > 0 Then Kill tmp
     DBEngine.CompactDatabase chemin, tmp        ' compacte vers un nouveau fichier
     If Len(Dir(sauv)) > 0 Then Kill sauv
-    Name chemin As sauv                         ' garde la version précédente
+    Name chemin As sauv                         ' copie de sécurité le temps de l'échange
     Name tmp As chemin                          ' met la version compactée à la place
+    Kill sauv                                   ' tout s'est bien passé : on supprime la copie
     CompacterBase = True
     Exit Function
 
@@ -417,6 +437,20 @@ End Function
 '===============================================================================
 ' Outils
 '===============================================================================
+' Dossier des fichiers Excel : <Rep_Cde>\Plans_Synerlink\_Liste_Machines\
+' Renvoie "" si l'adresse est absente de T_Commande_Liens ou si le dossier n'existe pas.
+Public Function DossierBOM() As String
+    Dim rs As DAO.Recordset, s As String
+    Set rs = CurrentDb.OpenRecordset("SELECT Adresse FROM T_Commande_Liens WHERE Intitule = 'Rep_Cde'", dbOpenSnapshot)
+    If Not rs.EOF Then s = Nz(rs!Adresse, "")
+    rs.Close
+    If Len(s) = 0 Then Exit Function
+    If Right$(s, 1) <> "\" Then s = s & "\"
+    s = s & SOUS_DOSSIER_BOM
+    If Len(Dir(s, vbDirectory)) = 0 Then Exit Function
+    DossierBOM = s
+End Function
+
 ' Chemin de la base qui contient T_Synerlink_Arbo ("" si la table est locale)
 Public Function CheminBaseSynerlink() As String
     Dim cnx As String, p As Long
@@ -456,7 +490,7 @@ Private Sub ControlerFichiers(ByRef manquants As String, ByRef nouveaux As Strin
     Do Until rs.EOF
         connus = connus & "|" & UCase$(rs!Reference) & "|"
         If rs!Actif Then
-            If Len(Dir(DOSSIER_BOM & rs!Reference & SUFFIXE_FICHIER)) = 0 Then
+            If Len(Dir(mDossier & rs!Reference & SUFFIXE_FICHIER)) = 0 Then
                 manquants = manquants & "- " & rs!Reference & SUFFIXE_FICHIER & vbCrLf
             End If
         End If
@@ -464,7 +498,7 @@ Private Sub ControlerFichiers(ByRef manquants As String, ByRef nouveaux As Strin
     Loop
     rs.Close
 
-    f = Dir(DOSSIER_BOM & "*" & SUFFIXE_FICHIER)
+    f = Dir(mDossier & "*" & SUFFIXE_FICHIER)
     Do While Len(f) > 0
         If Left$(f, 2) <> "~$" Then     ' fichiers temporaires d'Excel ouverts
             If InStr(connus, "|" & UCase$(Left$(f, Len(f) - Len(SUFFIXE_FICHIER))) & "|") = 0 Then
@@ -485,3 +519,48 @@ Private Function TableExisteDans(db As DAO.Database, ByVal nom As String) As Boo
         If t.Name = nom Then TableExisteDans = True: Exit Function
     Next t
 End Function
+
+'===============================================================================
+' À lancer UNE fois (fenêtre Exécution : CreerFormulaireFermeture) :
+' crée le formulaire caché F_Fermeture qui compacte la base à la fermeture d'Access.
+' Il faut ensuite l'ouvrir en mode Masqué depuis la macro AutoExec.
+'===============================================================================
+Public Sub CreerFormulaireFermeture()
+    Dim frm As Form, mdl As Module
+    Dim nomTemp As String, code As String
+
+    On Error Resume Next
+    DoCmd.Close acForm, "F_Fermeture", acSaveNo
+    DoCmd.DeleteObject acForm, "F_Fermeture"
+    On Error GoTo 0
+
+    Set frm = CreateForm()
+    nomTemp = frm.Name
+    frm.Caption = "Fermeture"
+    frm.RecordSelectors = False
+    frm.NavigationButtons = False
+    frm.HasModule = True
+    frm.OnUnload = "[Event Procedure]"
+
+    code = "' Ouvert caché au démarrage (AutoExec), se ferme avec Access :" & vbCrLf & _
+           "' compacte la base Synerlink si personne d'autre ne l'utilise." & vbCrLf & _
+           "Private Sub Form_Unload(Cancel As Integer)" & vbCrLf & _
+           "    Dim i As Integer" & vbCrLf & _
+           "    On Error Resume Next" & vbCrLf & _
+           "    For i = Forms.Count - 1 To 0 Step -1" & vbCrLf & _
+           "        If Forms(i).Name <> Me.Name Then DoCmd.Close acForm, Forms(i).Name, acSaveNo" & vbCrLf & _
+           "    Next i" & vbCrLf & _
+           "    For i = Reports.Count - 1 To 0 Step -1" & vbCrLf & _
+           "        DoCmd.Close acReport, Reports(i).Name, acSaveNo" & vbCrLf & _
+           "    Next i" & vbCrLf & _
+           "    SynerlinkCompacter" & vbCrLf & _
+           "End Sub"
+    Set mdl = frm.Module
+    mdl.AddFromString code
+
+    DoCmd.Close acForm, nomTemp, acSaveYes
+    DoCmd.Rename "F_Fermeture", acForm, nomTemp
+
+    MsgBox "Formulaire F_Fermeture créé." & vbCrLf & _
+           "Ajoutez maintenant son ouverture (mode Masqué) dans la macro AutoExec.", vbInformation
+End Sub
