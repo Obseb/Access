@@ -1,0 +1,38 @@
+' Vérifie que chaque machine active a son _Listing.xlsx, et repère les dossiers
+' machines qui ont un _Listing.xlsx mais ne sont pas dans T_Synerlink_Machines
+Private Sub ControlerFichiers(ByRef manquants As String, ByRef nouveaux As String)
+    Dim rs As DAO.Recordset
+    Dim f As String, connus As String
+    Dim dossiers As New Collection, d As Variant
+
+    Set rs = CurrentDb.OpenRecordset("SELECT Reference, Actif FROM " & TABLE_PARAM & " WHERE Niveau = 2", dbOpenSnapshot)
+    Do Until rs.EOF
+        connus = connus & "|" & UCase$(rs!Reference) & "|"
+        If rs!Actif Then
+            If Len(Dir(mDossier & rs!Reference & "\" & NOM_LISTING)) = 0 Then
+                manquants = manquants & "- " & rs!Reference & "\" & NOM_LISTING & vbCrLf
+            End If
+        End If
+        rs.MoveNext
+    Loop
+    rs.Close
+
+    ' Liste des sous-dossiers (d'abord en mémoire : Dir ne supporte pas deux boucles imbriquées)
+    On Error Resume Next
+    f = Dir(mDossier & "*", vbDirectory)
+    Do While Len(f) > 0
+        If f <> "." And f <> ".." And Left$(f, 1) <> "_" Then
+            If (GetAttr(mDossier & f) And vbDirectory) = vbDirectory Then dossiers.Add f
+        End If
+        f = Dir()
+    Loop
+    On Error GoTo 0
+
+    For Each d In dossiers
+        If InStr(connus, "|" & UCase$(d) & "|") = 0 Then
+            If Len(Dir(mDossier & d & "\" & NOM_LISTING)) > 0 Then
+                nouveaux = nouveaux & "- " & d & vbCrLf
+            End If
+        End If
+    Next d
+End Sub
