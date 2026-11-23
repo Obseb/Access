@@ -1,0 +1,88 @@
+'===============================================================================
+' VÉRIFICATION DES PDF
+' Contrôle que chaque plan de T_Synerlink_Arbo existe dans
+' <Rep_Cde>\Plans_Synerlink\<machine>\ ; la liste des manquants est
+' enregistrée dans un fichier texte qui s'ouvre automatiquement.
+'===============================================================================
+Public Sub SynerlinkVerifierPDF()
+    Dim racine As String, rs As DAO.Recordset
+    Dim machines As Object, fichiers As Object, manquants As Object, vus As Object
+    Dim cle As String, machine As String, f As String, chemin As String
+    Dim parts As Variant, k As Variant, n As Integer
+
+    On Error GoTo Erreur
+    racine = DossierBOM()
+    If Len(racine) = 0 Then
+        MsgBox "Dossier Plans_Synerlink introuvable (voir Rep_Cde dans T_Commande_Liens).", vbExclamation, "Synerlink"
+        Exit Sub
+    End If
+    DoCmd.Hourglass True
+
+    Set machines = CreateObject("Scripting.Dictionary")    ' "1.2"            -> 6155DO2
+    Set fichiers = CreateObject("Scripting.Dictionary")    ' "6155DO2|x.pdf"  -> fichier présent
+    Set manquants = CreateObject("Scripting.Dictionary")   ' "6155DO2\x.pdf"  -> nb d'utilisations
+    Set vus = CreateObject("Scripting.Dictionary")         ' plans distincts vérifiés
+    fichiers.CompareMode = 1                                ' noms de fichiers sans tenir compte de la casse
+    manquants.CompareMode = 1
+    vus.CompareMode = 1
+
+    ' 1. Machines et contenu de leur dossier (une seule lecture par dossier)
+    Set rs = CurrentDb.OpenRecordset("SELECT Arborescence, Reference FROM T_Synerlink_Arbo WHERE Niveau = 2", dbOpenSnapshot)
+    Do Until rs.EOF
+        SysCmd acSysCmdSetStatus, "Lecture du dossier " & rs!Reference & "..."
+        machines(CStr(rs!Arborescence)) = CStr(rs!Reference)
+        f = Dir(racine & rs!Reference & "\*.*")
+        Do While Len(f) > 0
+            fichiers(rs!Reference & "|" & f) = True
+            f = Dir()
+        Loop
+        rs.MoveNext
+    Loop
+    rs.Close
+
+    ' 2. Contrôle de chaque plan
+    SysCmd acSysCmdSetStatus, "Vérification des plans..."
+    Set rs = CurrentDb.OpenRecordset("SELECT Arborescence, Plan FROM T_Synerlink_Arbo " & _
+                                     "WHERE Niveau >= 3 AND Len(Plan & '') > 0 ORDER BY ID", dbOpenSnapshot)
+    Do Until rs.EOF
+        parts = Split(rs!Arborescence, ".")
+        cle = parts(0) & "." & parts(1)
+        If machines.Exists(cle) Then machine = machines(cle) Else machine = "?"
+        chemin = machine & "\" & rs!Plan
+        vus(chemin) = True
+        If Not fichiers.Exists(machine & "|" & rs!Plan) Then manquants(chemin) = manquants(chemin) + 1
+        rs.MoveNext
+    Loop
+    rs.Close
+
+    DoCmd.Hourglass False
+    SysCmd acSysCmdClearStatus
+
+    ' 3. Compte rendu
+    If manquants.Count = 0 Then
+        MsgBox "Tous les PDF existent (" & Format(vus.Count, "#,##0") & " plans vérifiés).", vbInformation, "Synerlink"
+        Exit Sub
+    End If
+
+    chemin = Environ("TEMP") & "\Synerlink_PDF_manquants.txt"
+    n = FreeFile
+    Open chemin For Output As #n
+    Print #n, "PDF manquants - " & Format(Now, "dd/mm/yyyy hh:nn")
+    Print #n, "Dossier : " & racine
+    Print #n, manquants.Count & " PDF manquant(s) sur " & vus.Count & " plans vérifiés"
+    Print #n, ""
+    For Each k In manquants.Keys
+        Print #n, k & vbTab & "(utilisé " & manquants(k) & " fois)"
+    Next k
+    Close #n
+
+    MsgBox manquants.Count & " PDF manquant(s) sur " & Format(vus.Count, "#,##0") & " plans vérifiés." & vbCrLf & _
+           "La liste va s'ouvrir dans le Bloc-notes.", vbExclamation, "Synerlink"
+    Application.FollowHyperlink chemin
+    Exit Sub
+
+Erreur:
+    DoCmd.Hourglass False
+    SysCmd acSysCmdClearStatus
+    MsgBox "Erreur pendant la vérification des PDF :" & vbCrLf & Err.Description, vbCritical, "Synerlink"
+End Sub
